@@ -1,0 +1,2599 @@
+
+Public Sub MAIN_PROCEDURE()
+
+    'Insert message box asking for the week ending date - and confirmation message box
+    Dim weekending As String
+    weekending = InputBox("Please enter the Week Ending Date", "WEEK ENDING")
+    
+    
+    'CONFIRMATION that week ending is correct
+    confirm = MsgBox("Is " & weekending & " the correct week ending date?", vbYesNo, "CONFIRM")
+    
+    Do While confirm = vbNo
+        weekending = InputBox("Please enter the Week Ending Date", "WEEK ENDING")
+        confirm = MsgBox("Is " & weekending & " the correct week ending date?", vbYesNoCancel, "CONFIRM")
+    Loop
+    
+    Application.DisplayAlerts = False
+    'sort export file
+    Payroll_Sort
+    
+    
+    'Declare agency names array
+    Dim agencies(4) As String
+    
+    'initalize
+    agencies(0) = "ACS Staffing"
+    agencies(1) = "JAM Staffing"
+    agencies(2) = "OneWay Staffing"
+    agencies(3) = "Partners"
+    agencies(4) = "Resource"
+    
+    
+    'Declare and initalize start and end rows for each agency from the original export file
+    Dim ACSrows(0, 1), JAMrows(0, 1), OneWayRows(0, 1), PartnersRows(0, 1), ResourceRows(0, 1) As Integer 'row(start, end)
+    
+    'After PayrollSort ACS Staffing will ALWAYS be first.
+    
+    'intialize all start and end positions to 0
+    For k = 0 To 1
+        ACSrows(0, k) = 2
+        JAMrows(0, k) = 2
+        OneWayRows(0, k) = 2
+        PartnersRows(0, k) = 2
+        ResourceRows(0, k) = 2
+    Next k
+
+    '-------------------------------------------------------------GEt START AND END ROWS FOR ALL AGENCIES FROM EXPORT FILE------------------------------------------------------------------------
+    'make sure to handle errors
+    Worksheets("Export File").Activate
+    
+    
+    Dim totalLastRow As Integer
+    totalLastRow = Range("A1").End(xlDown).row
+     
+    ACSrows(0, 0) = 2
+    'RECURSIVE FORMULA??
+    'get the start and end row nums for each agency
+    For i = 2 To totalLastRow
+        'If value is anything but ACS then the last row of ACS is currentRow - 1
+        If Range("G" & i) <> "ACS Staffing" Then
+            
+            ACSrows(0, 1) = i - 1   'end ACS rows
+            JAMrows(0, 0) = i       'start JAM
+            Exit For
+        ElseIf i = totalLastRow And Range("G" & i) = "ACS Staffing" Then    'if the last row is ACS Staffing then do not do the rest
+            ACSrows(0, 1) = i
+            JAMrows(0, 0) = i
+            ResourceRows(0, 0) = i
+            PartnersRows(0, 0) = i
+            OneWayRows(0, 0) = i
+        End If
+    Next i
+    
+    If JAMrows(0, 0) <> totalLastRow Then
+        For i = JAMrows(0, 0) To totalLastRow
+           'If value is anything but JAM then the last row of JAM is currentRow - 1
+            If Range("G" & i) <> "JAM Staffing" Then
+                
+                JAMrows(0, 1) = i - 1   'end JAM rows
+                OneWayRows(0, 0) = i    'start ONEWAY
+                Exit For
+            End If
+        Next i
+        
+        For i = OneWayRows(0, 0) To totalLastRow
+            'If value is anything but ACS then the last row of ACS is currentRow - 1
+            If Range("G" & i) <> "OneWay Staffing" Then
+                
+                OneWayRows(0, 1) = i - 1   'end oneway rows
+                PartnersRows(0, 0) = i       'start partners
+                Exit For
+            End If
+        Next i
+        
+        For i = PartnersRows(0, 0) To totalLastRow
+            'If value is anything but ACS then the last row of ACS is currentRow - 1
+            If Range("G" & i) <> "Partners Personnel" Then
+                
+                PartnersRows(0, 1) = i - 1   'end Partners
+                ResourceRows(0, 0) = i       'start Resource
+                Exit For
+            End If
+        Next i
+        
+        For i = ResourceRows(0, 0) To totalLastRow
+            'If value is anything but ACS then the last row of ACS is currentRow - 1
+            If Range("G" & i) <> "Resource Employment" Then
+                
+                ResourceRows(0, 1) = i - 1   'end resource
+                Exit For
+            End If
+        Next i
+    End If
+    
+    
+'-------------------------------------------------------------FINISH START AND END ROWS -----------------------------------------------------------------------
+    
+    '--------------------------------------------------------------PIVOT TABLE MACRO---------------------------------------------------------
+    PivotTable totalLastRow             'create pivot table
+    
+    'Get pivot table row and column metrics
+    Dim lastPivotRow As Integer
+    Dim firstPivotRow As Integer
+    Dim lastPivotColumn As String
+    Dim lastcolumnNumber As Integer
+    
+    firstPivotRow = 5    'first row of data
+    
+    lastPivotRow = Range("A4").End(xlDown).row - 1  '-1 because last row are the totals
+    Range("J1").Value = lastPivotRow
+    
+  
+    lastcolumnNumber = Cells(4, columns.Count).End(xlToLeft).Column     'before the additional column
+    lastPivotColumn = Split(Cells(1, lastcolumnNumber).Address, "$")(1)
+    
+    Dim headers(4) As String
+    headers(0) = "Daily Double Time"
+    headers(1) = "Daily Overtime"
+    headers(2) = "Regular"
+    headers(3) = "Sick"
+    headers(4) = "Weekly Overtime"
+    
+    Dim cols(4) As Integer
+    
+    For n = 0 To 4
+        cols(n) = 55     'irrelvant large number
+    Next n
+    
+    
+     
+    'NEED TO HANDLE THE POSIBILITY OF COLUMN NOT EXISTING
+    For i = 2 To lastcolumnNumber - 1 '(excludes the 'Grand Total' column
+        
+        For j = 0 To UBound(cols)
+            
+            If headers(j) = Cells(4, i).Value Then
+                cols(j) = i
+                Exit For
+            End If
+            
+        Next j
+        
+    Next i
+    
+    'get the column letters
+    Dim weekOT As String, dailyOT As String
+    weekOT = Split(Cells(1, cols(4)).Address, "$")(1)
+    dailyOT = Split(Cells(1, cols(1)).Address, "$")(1)
+    
+    lastPivotColumn = totalOT_Pivot(lastPivotRow, lastcolumnNumber, weekOT, dailyOT)
+    
+    Dim start As Integer
+    Dim endr As Integer
+    
+    'If Agency rows exist, then create spreadsheet
+        If ACSrows(0, 0) <= ACSrows(0, 1) Then
+            Sheets.Add.Name = "ACS Staffing"
+            start = ACSrows(0, 0)
+            endr = ACSrows(0, 1)
+            
+            ACS weekending, start, endr, lastPivotRow, lastPivotColumn, cols(2), lastcolumnNumber + 1, cols(0), cols(3)
+            
+        End If
+        
+        If JAMrows(0, 0) <= JAMrows(0, 1) Then
+            Sheets.Add.Name = "JAM Staffing"
+            start = JAMrows(0, 0)
+            endr = JAMrows(0, 1)
+            
+            JAM weekending, start, endr, lastPivotRow, lastPivotColumn, cols(2), lastcolumnNumber + 1, cols(0), cols(3)
+        End If
+        
+        If OneWayRows(0, 0) <= OneWayRows(0, 1) Then
+            Sheets.Add.Name = "OneWay Staffing"
+            start = OneWayRows(0, 0)
+            endr = OneWayRows(0, 1)
+            
+            OneWay weekending, start, endr, lastPivotRow, lastPivotColumn, cols(2), lastcolumnNumber + 1, cols(0), cols(3)
+            
+        End If
+        
+        If PartnersRows(0, 0) <= PartnersRows(0, 1) Then
+            Sheets.Add.Name = "Partners Tier 1"
+            Sheets.Add.Name = "Partners Tier 3"
+            start = PartnersRows(0, 0)
+            endr = PartnersRows(0, 1)
+            
+            Partners weekending, start, endr, lastPivotRow, lastPivotColumn, cols(2), lastcolumnNumber + 1, cols(0), cols(3)
+            
+        End If
+        
+        If ResourceRows(0, 0) <= ResourceRows(0, 1) Then
+            Sheets.Add.Name = "Resource"
+            start = ResourceRows(0, 0)
+            endr = ResourceRows(0, 1)
+            
+            Resource weekending, start, endr, lastPivotRow, lastPivotColumn, cols(2), lastcolumnNumber + 1, cols(0), cols(3)
+            
+        End If
+10
+    Application.DisplayAlerts = True
+End Sub
+
+
+'---------------------------------------------------------------------ACS-START--------------------------------------------------------
+    
+Private Sub ACS(weekending As String, startRow As Integer, endRow As Integer, lastPivotRow As Integer, lastPivotColumn As String, STcol As Integer, OTcol As Integer, DTcol As Integer, SICKcol As Integer)
+
+    
+    'ACS-SETUP
+    ACS_Setup_Part1 weekending
+    ACS_Setup_Part2
+    
+    '''
+    '''
+    'Get ACS names, empIds, and rates
+    '''
+    '''
+    'declare arrays to store name, tier, and employee ID - handle rates separately using a formula
+    Dim ACS_total As Integer
+    Dim ACS_employees() As String
+    Dim ACS_emp_IDs() As String
+    Dim ACS_tier() As String
+    
+    ReDim Preserve ACS_employees(0)
+    ReDim Preserve ACS_emp_IDs(0)
+    ReDim Preserve ACS_tier(0)
+    
+    Sheets("Export File").Activate
+    
+    'Initialize first employee from first line
+    ACS_total = 1
+    ACS_employees(0) = Range("A2").Value     'name
+    ACS_tier(0) = Range("I2").Value     'ACS Staffing tier
+    ACS_emp_IDs(0) = Range("B2").Value     'Emp ID#
+    
+
+    
+    For i = 3 To endRow
+        
+        If Range("A" & i).Value <> Range("A" & i - 1).Value Then  'new employee (different from previous)
+        
+            ReDim Preserve ACS_employees(ACS_total)
+            ReDim Preserve ACS_emp_IDs(ACS_total)
+            ReDim Preserve ACS_tier(ACS_total)
+            
+            ACS_employees(ACS_total) = Range("A" & i).Value      'name
+            ACS_tier(ACS_total) = Range("I" & i).Value      'tier
+            ACS_emp_IDs(ACS_total) = Range("B" & i).Value      'ID
+            ACS_total = ACS_total + 1   'increment by 1
+        End If
+        
+    Next i
+    
+    
+    'Enter values on ACS Staffing sheet
+    Worksheets("ACS Staffing").Activate
+    
+    Dim ACS_tiers(3) As String
+    ACS_tiers(0) = "Tier 1-G Labor"
+    ACS_tiers(1) = "Tier 1-Clerical"
+    ACS_tiers(2) = "Tier 2-G Labor"
+    ACS_tiers(3) = "Tier 2-Clerical"
+    
+    'create and initialize array of counters for each employee per tier as you add
+    Dim rowCount(3, 1) As Integer   'rowcount (start,end)
+    rowCount(0, 0) = 10
+    rowCount(0, 1) = 10
+    rowCount(1, 0) = 67
+    rowCount(1, 1) = 67
+    rowCount(2, 0) = 95
+    rowCount(2, 1) = 95
+    rowCount(3, 0) = 132
+    rowCount(3, 1) = 132
+    
+    'Put the names on the ACS sheet based off the second index (tier)
+    'A6 - Tier 1-G Labor     -names start on A10    array index = 0
+    'A67 - Tier 1-G Clerical -names start on A67    array index = 1
+    'A91 - Tier 2-G Labor    -names start on A95    array index = 2
+    'A128 - TIer 2-G Clerical - names start on A132 array index = 3
+    
+    
+    For i = 0 To ACS_total - 1 'iterate through the array
+        
+        For j = 0 To 3
+            
+            If ACS_tier(i) = ACS_tiers(j) Then
+                'place employee name under the appropriate tier
+                Range("A" & rowCount(j, 1)).Value = ACS_employees(i)   'name
+                Range("B" & rowCount(j, 1)).Value = ACS_emp_IDs(i)   'ID
+                
+                If j = 0 Or j = 2 Then  '  populate Remark
+                    Range("L" & rowCount(j, 1)).Value = "Warehouse"
+                End If
+                'increment counter
+                rowCount(j, 1) = rowCount(j, 1) + 1
+                Exit For
+                
+            End If
+            
+        Next j
+    
+    Next i
+    
+    Dim kvalues(3) As Integer
+    kvalues(0) = 1
+    kvalues(1) = 58
+    kvalues(2) = 86
+    kvalues(3) = 123
+    
+    'Fill in rates for ACS
+    For i = 0 To 3
+        
+        'Rate formula
+        Range("C" & rowCount(i, 0)).Formula2 = "=INDEX('Export File'!$D$2:$D$" & endRow & ",MATCH(1,($A" & rowCount(i, 0) & "='Export File'!$A$2:$A$" & endRow & ")*(""Regular""='Export File'!$C$2:$C$" & endRow & "),0))"
+        Range("C" & rowCount(i, 0)).AutoFill Destination:=Range("C" & rowCount(i, 0) & ":C" & rowCount(i, 1) - 1), Type:=xlFillDefault
+    
+        'Populate total to bill formula
+        Range("K" & rowCount(i, 0)).Formula2 = "=((D" & rowCount(i, 0) & "*C" & rowCount(i, 0) & ")+(E" & rowCount(i, 0) & "*C" & rowCount(i, 0) & "*1.5)+(F" & rowCount(i, 0) & "*C" & rowCount(i, 0) & "*2))*K$" & kvalues(i)
+        Range("K" & rowCount(i, 0)).AutoFill Destination:=Range("K" & rowCount(i, 0) & ":K" & rowCount(i, 1) - 1), Type:=xlFillDefault
+        
+        'Populate ST HOURS
+        Range("D" & rowCount(i, 0)).Formula2 = "=VLOOKUP($A" & rowCount(i, 0) & ",Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & STcol & ",FALSE)"
+        Range("D" & rowCount(i, 0)).AutoFill Destination:=Range("D" & rowCount(i, 0) & ":D" & rowCount(i, 1) - 1), Type:=xlFillDefault
+        
+        'Populate OT HOURS
+        Range("E" & rowCount(i, 0)).Formula2 = "=VLOOKUP($A" & rowCount(i, 0) & ",Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & OTcol & ",FALSE)"
+        Range("E" & rowCount(i, 0)).AutoFill Destination:=Range("E" & rowCount(i, 0) & ":E" & rowCount(i, 1) - 1), Type:=xlFillDefault
+        
+        If DTcol <> 55 Then
+            'Populate DT HOURS
+            Range("F" & rowCount(i, 0)).Formula2 = "=VLOOKUP($A" & rowCount(i, 0) & ",Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & DTcol & ",FALSE)"
+            Range("F" & rowCount(i, 0)).AutoFill Destination:=Range("F" & rowCount(i, 0) & ":F" & rowCount(i, 1) - 1), Type:=xlFillDefault
+        End If
+        
+        If SICKcol <> 55 Then
+            'Populate SICK
+            Range("H" & rowCount(i, 0)).Formula2 = "=VLOOKUP($A" & rowCount(i, 0) & ",Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & SICKcol & ",FALSE)"
+            Range("H" & rowCount(i, 0)).AutoFill Destination:=Range("H" & rowCount(i, 0) & ":H" & rowCount(i, 1) - 1), Type:=xlFillDefault
+        End If
+        
+        Range("C" & rowCount(i, 0) & ": K" & rowCount(i, 1)).NumberFormat = "0.00"
+        
+        calculateTotals rowCount(i, 0), rowCount(i, 1)
+        Add_border_to_single_table rowCount(i, 0), rowCount(i, 1)
+        
+    Next i
+    
+    'Autofill total formulas and add borders
+    Sheets("ACS Staffing").Activate
+   
+    'Autofit all columns -  can do this at the end with loop iterator using the agencies/worksheet names
+    Worksheets("ACS Staffing").columns("A:L").AutoFit
+   
+    
+    
+    
+    Sheets.Add.Name = "ACS FINAL"
+
+    
+    'Copy values and formatting to another sheet
+    Sheets("ACS Staffing").Range("A:J").Copy
+    Sheets("ACS FINAL").Range("A:J").PasteSpecial Paste:=xlPasteValuesAndNumberFormats
+
+    Sheets("ACS Staffing").Range("A:J").Copy
+    Sheets("ACS FINAL").Range("A:J").PasteSpecial Paste:=xlPasteFormats
+    
+    Sheets("ACS Staffing").Range("K:AC").Copy Destination:=Worksheets("ACS FINAL").Range("K:AC")
+    
+    Worksheets("ACS Staffing").Delete       'delete the one with all the formulas
+   
+End Sub
+'-----------------------------------------------------------------------END ACS----BEGIN JAM------------------------------------------------------------------------------
+Private Sub JAM(weekending As String, startRow As Integer, endRow As Integer, lastPivotRow As Integer, lastPivotColumn As String, STcol As Integer, OTcol As Integer, DTcol As Integer, SICK As Integer)
+    JAM_setup weekending
+    
+    
+    '''NEED TO HANDLE FOR WHEN THERE IS NO JAM EMPLOYEES
+    '''
+    'Get JAM names, empIds, JAM has no tiers
+    '''
+    '''
+    Dim JAM_total As Integer
+    Dim JAM_employees() As String
+    Dim JAM_emp_IDs() As String
+    
+    ReDim Preserve JAM_employees(0)
+    ReDim Preserve JAM_emp_IDs(0)
+    
+    Sheets("Export File").Activate
+    
+    'Initialize first employee from first line
+    JAM_total = 1
+    JAM_employees(0) = Range("A" & startRow).Value    'name  JAMrows(0,0) is the first instance of JAM
+    JAM_emp_IDs(0) = Range("B" & startRow).Value    'Emp ID#
+    
+    For i = startRow + 1 To endRow
+        
+        If Range("A" & i).Value <> Range("A" & i - 1).Value Then  'new employee (different from previous)
+        
+            ReDim Preserve JAM_employees(JAM_total)
+            ReDim Preserve JAM_emp_IDs(JAM_total)
+            
+            JAM_employees(JAM_total) = Range("A" & i).Value      'name
+            JAM_emp_IDs(JAM_total) = Range("B" & i).Value      'ID
+            JAM_total = JAM_total + 1   'increment by 1
+        End If
+        
+    Next i
+    
+    'Enter values on JAM Staffing Sheet
+    Sheets("JAM Staffing").Activate
+    
+    Dim startJam As Integer, endJam As Integer
+    startJam = 9
+    endJam = 9
+    
+    For i = 0 To JAM_total - 1
+        Range("A" & endJam).Value = JAM_employees(i)
+        Range("B" & endJam).Value = JAM_emp_IDs(i)
+        endJam = endJam + 1
+    Next i
+   
+    'Total to bill formula
+    Range("K9").Formula2 = "=((D9*C9)+(E9*C9*1.5)+(F9*C9*2)+(I9*C9))*$L$1"
+    Range("K9").AutoFill Destination:=Range("K9:K" & endJam - 1), Type:=xlFillDefault
+   
+    'Rate formula
+    Range("C9").Formula2 = "=INDEX('Export File'!$D$2:$D$" & endRow & ",MATCH(1,($A9='Export File'!$A$2:$A$" & endRow & ")*(""Regular""='Export File'!$C$2:$C$" & endRow & "),0))"
+    Range("C9").AutoFill Destination:=Range("C9:C" & endJam - 1), Type:=xlFillDefault
+    
+    'Populate ST HOURS
+    Range("D9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & STcol & ",FALSE)"
+    Range("D9").AutoFill Destination:=Range("D9:D" & endJam - 1), Type:=xlFillDefault
+    
+    'Populate OT HOURS
+    Range("E9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & OTcol & ",FALSE)"
+    Range("E9").AutoFill Destination:=Range("E9:E" & endJam - 1), Type:=xlFillDefault
+    
+    If DTcol <> 55 Then
+        'Populate DT HOURS
+        Range("F9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & DTcol & ",FALSE)"
+        Range("F9").AutoFill Destination:=Range("F9:F" & endJam - 1), Type:=xlFillDefault
+    End If
+    
+    If SICK <> 55 Then
+        'Populate SICK
+        Range("H9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & SICK & ",FALSE)"
+        Range("H9").AutoFill Destination:=Range("H9:H" & endJam - 1), Type:=xlFillDefault
+    End If
+    
+    Range("C9:L" & endJam).NumberFormat = "0.00"
+   
+   
+    'Calculate TOTALS
+    calculateTotals startJam, endJam
+    'Add Borders
+    Add_border_to_single_table startJam, endJam
+    
+    
+    'Copy values and formatting to another sheet
+    
+    Sheets.Add.Name = "JAM FINAL"
+    
+    Sheets("JAM Staffing").Range("A:J").Copy
+    Sheets("JAM FINAL").Range("A:J").PasteSpecial Paste:=xlPasteValuesAndNumberFormats
+
+    Sheets("JAM Staffing").Range("A:J").Copy
+    Sheets("JAM FINAL").Range("A:J").PasteSpecial Paste:=xlPasteFormats
+    
+    Sheets("JAM Staffing").Range("K:AC").Copy Destination:=Worksheets("JAM FINAL").Range("K:AC")
+    
+    Worksheets("JAM Staffing").Delete       'delete the one with all the formulas
+    
+    '----------------------------------------------------------------------END-JAM--------------------------------------------------------------------------
+    
+    
+End Sub
+Private Sub OneWay(weekending As String, startr As Integer, endr As Integer, lastPivotRow As Integer, lastPivotColumn As String, STcol As Integer, OTcol As Integer, DTcol As Integer, SICK As Integer)
+ OneWay_Setup (weekending)
+ oneway_headerBorders
+ 
+ 
+    '''
+    'Get oneway names, empIds
+    '''
+    '''
+    Dim OneWay_total As Integer
+    Dim OneWay_employees() As String
+    Dim OneWay_emp_IDs() As String
+    
+    ReDim Preserve OneWay_employees(0)
+    ReDim Preserve OneWay_emp_IDs(0)
+    
+    Sheets("Export File").Activate
+
+    'Initialize first employee from first line
+    OneWay_total = 1
+    OneWay_employees(0) = Range("A" & startr).Value    'name  startr is the first instance of oneway
+    OneWay_emp_IDs(0) = Range("B" & startr).Value    'Emp ID#
+
+    For i = startr + 1 To endr
+
+        If Range("A" & i).Value <> Range("A" & i - 1).Value Then  'new employee (different from previous)
+
+            ReDim Preserve OneWay_employees(OneWay_total)
+            ReDim Preserve OneWay_emp_IDs(OneWay_total)
+
+            OneWay_employees(OneWay_total) = Range("A" & i).Value      'name
+            OneWay_emp_IDs(OneWay_total) = Range("B" & i).Value      'ID
+            OneWay_total = OneWay_total + 1   'increment by 1
+        End If
+
+    Next i
+
+    'Enter values on oneway Staffing Sheet
+    Sheets("OneWay Staffing").Activate
+
+    Dim startOneWay As Integer, endOneWay As Integer
+    startOneWay = 9
+    endOneWay = 9
+
+    For i = 0 To OneWay_total - 1
+        Range("A" & endOneWay).Value = OneWay_employees(i)
+        Range("B" & endOneWay).Value = OneWay_emp_IDs(i)
+        endOneWay = endOneWay + 1
+    Next i
+    
+    If endOneWay - 1 = startOneWay Then 'if there is only one employee
+        Range("K9").Formula2 = "=((D9*C9)+(E9*C9*1.5)+(F9*C9*2)+(I9*C9))*$L$1"
+        Range("C9").Formula2 = "=INDEX('Export File'!$D$2:$D$" & endr & ",MATCH(1,($A9='Export File'!$A$2:$A$" & endr & ")*(""Regular""='Export File'!$C$2:$C$" & endr & "),0))"
+        Range("D9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & STcol & ",FALSE)"
+        Range("E9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & OTcol & ",FALSE)"
+        If DTcol <> 55 Then
+            Range("F9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & DTcol & ",FALSE)"
+        End If
+        If SICK <> 55 Then
+            Range("H9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & SICK & ",FALSE)"
+        End If
+    Else
+    
+        'Total to bill formula
+        Range("K9").Formula2 = "=((D9*C9)+(E9*C9*1.5)+(F9*C9*2)+(I9*C9))*$L$1"
+        Range("K9").AutoFill Destination:=Range("K9:K" & endOneWay - 1), Type:=xlFillDefault
+    
+        'Rate formula
+        Range("C9").Formula2 = "=INDEX('Export File'!$D$2:$D$" & endr & ",MATCH(1,($A9='Export File'!$A$2:$A$" & endr & ")*(""Regular""='Export File'!$C$2:$C$" & endr & "),0))"
+        Range("C9").AutoFill Destination:=Range("C9:C" & endOneWay - 1), Type:=xlFillDefault
+    
+        'Populate ST HOURS
+        Range("D9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & STcol & ",FALSE)"
+        Range("D9").AutoFill Destination:=Range("D9:D" & endOneWay - 1), Type:=xlFillDefault
+    
+        'Populate OT HOURS
+        Range("E9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & OTcol & ",FALSE)"
+        Range("E9").AutoFill Destination:=Range("E9:E" & endOneWay - 1), Type:=xlFillDefault
+    
+        If DTcol <> 55 Then
+            'Populate DT HOURS
+            Range("F9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & DTcol & ",FALSE)"
+            Range("F9").AutoFill Destination:=Range("F9:F" & endOneWay - 1), Type:=xlFillDefault
+        End If
+        
+        If SICK <> 55 Then
+            'Populate SICK
+            Range("H9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & SICK & ",FALSE)"
+            Range("H9").AutoFill Destination:=Range("H9:H" & endOneWay - 1), Type:=xlFillDefault
+        End If
+    End If
+    
+    Range("C9:K" & endOneWay).NumberFormat = "0.00"
+
+
+    'Calculate TOTALS
+    calculateTotals startOneWay, endOneWay
+    'Add Borders
+    Add_border_to_single_table startOneWay, endOneWay
+    
+    'Copy values and formatting to another sheet
+    
+    Sheets.Add.Name = "OneWay FINAL"
+    
+    Sheets("OneWay Staffing").Range("A:J").Copy
+    Sheets("OneWay FINAL").Range("A:J").PasteSpecial Paste:=xlPasteValuesAndNumberFormats
+
+    Sheets("OneWay Staffing").Range("A:J").Copy
+    Sheets("OneWay FINAL").Range("A:J").PasteSpecial Paste:=xlPasteFormats
+    
+    Sheets("OneWay Staffing").Range("K:AC").Copy Destination:=Worksheets("OneWay FINAL").Range("K:AC")
+    Worksheets("OneWay Staffing").Delete       'delete the one with all the formulas
+    
+    
+End Sub
+
+Private Sub Partners(weekending As String, startr As Integer, endr As Integer, lastPivotRow As Integer, lastPivotColumn As String, STcol As Integer, OTcol As Integer, DTcol As Integer, SICK As Integer)
+    Sheets("Partners Tier 1").Activate
+    PartnersT1_Setup weekending
+    Partners_setup_pt2
+    
+    Sheets("Partners Tier 3").Activate
+    PartnersT1_Setup weekending
+    Partners_setup_pt2
+    
+    
+      '''
+    '''
+    'Get ACS names, empIds, and rates
+    '''
+    '''
+    'declare arrays to store name, tier, and employee ID - handle rates separately using a formula
+    Dim Partners_total As Integer
+    Dim Partners_employees() As String
+    Dim Partners_emp_IDs() As String
+    Dim Partners_tier() As String
+    
+    ReDim Preserve Partners_employees(0)
+    ReDim Preserve Partners_emp_IDs(0)
+    ReDim Preserve Partners_tier(0)
+    
+    Sheets("Export File").Activate
+    
+    'Initialize first employee from first line
+    Partners_total = 1
+    Partners_employees(0) = Range("A" & startr).Value     'name
+    Partners_tier(0) = Range("I" & startr).Value     'ACS Staffing tier
+    Partners_emp_IDs(0) = Range("B" & startr).Value     'Emp ID#
+    
+
+    
+    For i = startr + 1 To endr
+        
+        If Range("A" & i).Value <> Range("A" & i - 1).Value Then  'new employee (different from previous)
+        
+            ReDim Preserve Partners_employees(Partners_total)
+            ReDim Preserve Partners_emp_IDs(Partners_total)
+            ReDim Preserve Partners_tier(Partners_total)
+            
+            Partners_employees(Partners_total) = Range("A" & i).Value      'name
+            Partners_tier(Partners_total) = Range("I" & i).Value      'tier
+            Partners_emp_IDs(Partners_total) = Range("B" & i).Value      'ID
+            Partners_total = Partners_total + 1   'increment by 1
+        End If
+        
+    Next i
+    
+
+    Dim Partners_tiers(1) As String
+    Partners_tiers(0) = "Tier 1"
+    Partners_tiers(1) = "Tier 3"
+    
+    Dim tier1_count As Integer
+    Dim tier3_count As Integer
+    Dim tierRows(1, 1) As Integer  ' 0,0 & 0,1 - tier 1 and 1,0 * 1,1 for tier 3
+    tier1_count = 0
+    tier3_count = 0
+    
+    tierRows(0, 0) = 8  'tier 1 - start
+    tierRows(0, 1) = 8  'tier 1 - end
+    tierRows(1, 0) = 8  'tier 3 - start
+    tierRows(1, 1) = 8  'tier 3 - end
+    
+    For i = 0 To Partners_total - 1 'iterate through the array
+    
+        If Partners_tier(i) = "Tier 1" Then
+            Sheets("Partners Tier 1").Activate
+            Range("A" & tierRows(0, 1)).Value = Partners_employees(i)  'name
+            Range("B" & tierRows(0, 1)).Value = Partners_emp_IDs(i)   'ID
+            'increment counter
+            tierRows(0, 1) = tierRows(0, 1) + 1
+            tier1_count = tier1_count + 1
+            
+        Else    'tier 3
+            Sheets("Partners Tier 3").Activate
+            Range("A" & tierRows(1, 1)).Value = Partners_employees(i) 'name
+            Range("B" & tierRows(1, 1)).Value = Partners_emp_IDs(i)
+            'increment counters
+            tierRows(1, 1) = tierRows(1, 1) + 1
+            tier3_count = tier3_count + 1
+        End If
+            
+    Next i
+    
+    'Fill in rates for Partners - both tiers
+    '
+    ' TIER 1
+    '
+    Sheets("Partners Tier 1").Activate
+    For i = 0 To 1
+       'Rate formula
+        Range("C8").Formula2 = "=INDEX('Export File'!$D$2:$D$" & endr & ",MATCH(1,($A8='Export File'!$A$2:$A$" & endr & ")*(""Regular""='Export File'!$C$2:$C$" & endr & "),0))"
+        Range("C8").AutoFill Destination:=Range("C8:C" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        
+        'Populate UWC TOTAL formula
+        Range("Q8").Formula2 = "=SUM(M8:P8)"
+        Range("Q8").AutoFill Destination:=Range("Q8:Q" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        
+        'populate ST hours
+        Range("D8").Formula2 = "=VLOOKUP($A8,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & STcol & ",FALSE)"
+        Range("D8").AutoFill Destination:=Range("D8:D" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        
+        'Populate OT hours
+        Range("E8").Formula2 = "=VLOOKUP($A8,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & OTcol & ",FALSE)"
+        Range("E8").AutoFill Destination:=Range("E8:E" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        
+        If DTcol <> 55 Then
+            'Populate DT hours
+            Range("F8").Formula2 = "=VLOOKUP($A8,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & DTcol & ",FALSE)"
+            Range("F8").AutoFill Destination:=Range("F8:F" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        End If
+        
+        If SICK <> 55 Then
+            'Populate SICK
+            Range("G8").Formula2 = "=VLOOKUP($A8,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & SICK & ",FALSE)"
+            Range("G8").AutoFill Destination:=Range("G8:G" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        End If
+        
+        'Populate ST Hrs. Pay
+        Range("H8").Formula2 = "=$D8*$C8"
+        Range("H8").AutoFill Destination:=Range("H8:H" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        
+        'Populate OT Hrs. Pay
+        Range("I8").Formula2 = "=$E8*$C8*1.5"
+        Range("I8").AutoFill Destination:=Range("I8:I" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        
+        'Populate DT hrs pay
+        Range("J8").Formula2 = "=$F8*$C8*2"
+        Range("J8").AutoFill Destination:=Range("J8:J" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        
+        'Populate ST Hrs. Pay
+        Range("K8").Formula2 = "=$G8*$C8"
+        Range("K8").AutoFill Destination:=Range("=K8:K" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        
+        'populate EMP total
+        Range("L8").Formula2 = "=$H8+$I8"
+        Range("L8").AutoFill Destination:=Range("=L8:L" & tierRows(i, 1) - 1), Type:=xlFillDefault
+        Sheets("Partners Tier 3").Activate
+
+    Next i
+    
+    '------------------------
+    'TIER 1 CALCULATIONS
+    '------------------------
+    Sheets("Partners Tier 1").Activate
+    
+    'REG RATE
+    Range("M8").Formula2 = "=$H8*1.3"
+    Range("M8").AutoFill Destination:=Range("=M8:M" & tierRows(0, 1) - 1), Type:=xlFillDefault
+
+    'OT RATE
+    Range("N8").Formula2 = "=$I8*1.285"
+    Range("N8").AutoFill Destination:=Range("=N8:N" & tierRows(0, 1) - 1), Type:=xlFillDefault
+
+    'DT RATE
+    Range("O8").Formula2 = "=$J8*1.285"
+    Range("O8").AutoFill Destination:=Range("=O8:O" & tierRows(0, 1) - 1), Type:=xlFillDefault
+    
+    'TOTALS
+    Range("A" & tierRows(0, 1)) = "TOTALS"
+    
+    Range("D" & tierRows(0, 1)).Formula2 = "=SUM(D$8:D$" & tierRows(0, 1) - 1 & ")"
+    Range("D" & tierRows(0, 1)).AutoFill Destination:=Range("D" & tierRows(0, 1) & ":Q" & tierRows(0, 1)), Type:=ylFillDefault
+    
+    Range("A" & tierRows(0, 1) & ":Q" & tierRows(0, 1)).Font.Bold = True
+    Range("C8:Q" & tierRows(0, 1)).NumberFormat = "_(* #,##0.00_);_(* (#,##0.00);_(* ""-""??_);_(@_)"       'accounting format
+    
+    'add borders
+    Add_PPT1_Borders tierRows(0, 1)
+    
+    Sheets.Add.Name = "Partners T1 FINAL"
+    
+    Sheets("Partners Tier 1").Range("A:G").Copy
+    Sheets("Partners T1 FINAL").Range("A:G").PasteSpecial Paste:=xlPasteValuesAndNumberFormats
+
+    Sheets("Partners Tier 1").Range("A:G").Copy
+    Sheets("Partners T1 FINAL").Range("A:G").PasteSpecial Paste:=xlPasteFormats
+    
+    Sheets("Partners Tier 1").Range("H:AC").Copy Destination:=Worksheets("Partners T1 FINAL").Range("H:AC")
+    Worksheets("Partners Tier 1").Delete       'delete the one with all the formulas
+    
+    '------------------------
+    'TIER 3 RATE CALCULATIONS
+    '------------------------
+    Sheets("Partners Tier 3").Activate
+    
+    'REG RATE
+    Range("M8").Formula2 = "=$H8*1.345"
+    Range("M8").AutoFill Destination:=Range("=M8:M" & tierRows(1, 1) - 1), Type:=xlFillDefault
+
+    'OT RATE
+    Range("N8").Formula2 = "=$I8*1.315"
+    Range("N8").AutoFill Destination:=Range("=N8:N" & tierRows(1, 1) - 1), Type:=xlFillDefault
+
+    'DT RATE
+    Range("O8").Formula2 = "=$J8*1.315"
+    Range("O8").AutoFill Destination:=Range("=O8:O" & tierRows(1, 1) - 1), Type:=xlFillDefault
+    
+    'ADD ADDITIONAL COLUMNS FOR TIER 3
+    PartnersT3_Supp tierRows(1, 1)
+    
+    'Calculations for first two columns
+    Range("B8").Formula2 = "=$F8*19.5"
+    Range("B8").AutoFill Destination:=Range("=B8:B" & tierRows(1, 1) - 1), Type:=xlFillDefault
+    
+    Range("C8").Formula2 = "=$B8*0.015"
+    Range("C8").AutoFill Destination:=Range("=C8:C" & tierRows(1, 1) - 1), Type:=xlFillDefault
+    
+    'TOTALS
+    Range("A" & tierRows(1, 1)) = "TOTAL"
+    
+    'first two columns
+    Range("B" & tierRows(1, 1)).Formula2 = "=SUM(B$8:B$" & tierRows(1, 1) - 1 & ")"
+    Range("C" & tierRows(1, 1)).Formula2 = "=SUM(C$8:C$" & tierRows(1, 1) - 1 & ")"
+    
+    'the rest
+    Range("F" & tierRows(1, 1)).Formula2 = "=SUM(F$8:F$" & tierRows(1, 1) - 1 & ")"
+    Range("F" & tierRows(1, 1)).AutoFill Destination:=Range("F" & tierRows(1, 1) & ":R" & tierRows(1, 1)), Type:=ylFillDefault
+    
+    Range("A" & tierRows(1, 1) & ":R" & tierRows(1, 1)).Font.Bold = True   'BOLD TOTALS
+    
+    Range("B8:C" & tierRows(0, 1)).NumberFormat = "_(* #,##0.00_);_(* (#,##0.00);_(* ""-""??_);_(@_)"
+    Range("E8:R" & tierRows(0, 1)).NumberFormat = "_(* #,##0.00_);_(* (#,##0.00);_(* ""-""??_);_(@_)"
+    
+    'Add borders
+    Add_PPT3_Borders tierRows(1, 1)
+    
+    'copy to a new worksheet
+    
+    Sheets.Add.Name = "Partners T3 FINAL"
+    
+    Sheets("Partners Tier 3").Range("A:I").Copy
+    Sheets("Partners T3 FINAL").Range("A:I").PasteSpecial Paste:=xlPasteValuesAndNumberFormats
+
+    Sheets("Partners Tier 3").Range("A:I").Copy
+    Sheets("Partners T3 FINAL").Range("A:I").PasteSpecial Paste:=xlPasteFormats
+    
+    Sheets("Partners Tier 3").Range("J:AC").Copy Destination:=Worksheets("Partners T3 FINAL").Range("J:AC")
+    Worksheets("Partners Tier 3").Delete       'delete the one with all the formulas
+
+
+End Sub
+Private Sub Resource(weekending As String, startr As Integer, endr As Integer, lastPivotRow As Integer, lastPivotColumn As String, STcol As Integer, OTcol As Integer, DTcol As Integer, SICK As Integer)
+    Sheets("Resource").Activate
+    Resource_Setup weekending
+
+    '''
+    'Get ACS names, empIds, and rates
+    'declare arrays to store name, tier, and employee ID - handle rates separately using a formula
+    Dim Resource_total As Integer
+    Dim Resource_employees() As String
+    Dim Resource_emp_IDs() As String
+    
+    ReDim Preserve Resource_employees(0)
+    ReDim Preserve Resource_emp_IDs(0)
+    
+    Sheets("Export File").Activate
+    
+    'Initialize first employee from first line
+    Resource_total = 1
+    Resource_employees(0) = Range("A" & startr).Value     'name
+    Resource_emp_IDs(0) = Range("B" & startr).Value     'Emp ID#
+    
+
+    
+    For i = startr + 1 To endr
+        
+        If Range("A" & i).Value <> Range("A" & i - 1).Value Then  'new employee (different from previous)
+        
+            ReDim Preserve Resource_employees(Resource_total)
+            ReDim Preserve Resource_emp_IDs(Resource_total)
+            
+            Resource_employees(Resource_total) = Range("A" & i).Value      'name
+            Resource_emp_IDs(Resource_total) = Range("B" & i).Value      'ID
+            Resource_total = Resource_total + 1   'increment by 1
+        End If
+        
+    Next i
+    
+    Sheets("Resource").Activate
+    
+    'Declare start and end variables for the final file
+    Dim startResource As Integer
+    Dim endResource As Integer
+    
+    startResource = 9
+    endResource = 9
+    
+    
+    For i = 0 To Resource_total - 1
+            Range("A" & endResource).Value = Resource_employees(i)  'name
+            Range("B" & endResource).Value = Resource_emp_IDs(i)   'ID
+            
+            'increment counter
+            endResource = endResource + 1
+    Next i
+    
+    '------------------------
+    '     CALCULATIONS
+    '------------------------
+    
+    'RATE
+    Range("C9").Formula2 = "=INDEX('Export File'!$D$2:$D$" & endr & ",MATCH(1,($A9='Export File'!$A$2:$A$" & endr & ")*(""Regular""='Export File'!$C$2:$C$" & endr & "),0))"
+    Range("C9").AutoFill Destination:=Range("C9:C" & endResource - 1), Type:=xlFillDefault
+
+    'Total to bill formula
+    Range("K9").Formula2 = "=((D9*C9)+(E9*C9*1.5)+(F9*C9*2)+(I9*C9))*$K$1"
+    Range("K9").AutoFill Destination:=Range("K9:K" & endResource - 1), Type:=xlFillDefault
+    
+    'populate ST hours
+    Range("D9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & STcol & ",FALSE)"
+    Range("D9").AutoFill Destination:=Range("D9:D" & endResource - 1), Type:=xlFillDefault
+    
+    'Populate OT hours
+    Range("E9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & OTcol & ",FALSE)"
+    Range("E9").AutoFill Destination:=Range("E9:E" & endResource - 1), Type:=xlFillDefault
+    
+    If DTcol <> 55 Then
+        'Populate DT hours
+        Range("F9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & DTcol & ",FALSE)"
+        Range("F9").AutoFill Destination:=Range("F9:F" & endResource - 1), Type:=xlFillDefault
+    End If
+    
+    If SICK <> 55 Then
+        'Populate SICK
+        Range("G9").Formula2 = "=VLOOKUP($A9,Pivot!$A$5:$" & lastPivotColumn & "$" & lastPivotRow & "," & SICK & ",FALSE)"
+        Range("G9").AutoFill Destination:=Range("G9:G" & endResource - 1), Type:=xlFillDefault
+    End If
+    
+    calculateTotals startResource, endResource
+    Add_border_to_single_table startResource, endResource
+    
+    'ACCOUNTING FORMAT
+    Range("C9:K" & endResource).NumberFormat = "_(* #,##0.00_);_(* (#,##0.00);_(* ""-""??_);_(@_)"
+    
+    'Copy values and formatting to another sheet
+    
+    Sheets.Add.Name = "Resource FINAL"
+    
+    Sheets("Resource").Range("A:J").Copy
+    Sheets("Resource FINAL").Range("A:J").PasteSpecial Paste:=xlPasteValuesAndNumberFormats
+
+    Sheets("Resource").Range("A:J").Copy
+    Sheets("Resource FINAL").Range("A:J").PasteSpecial Paste:=xlPasteFormats
+    
+    Sheets("Resource").Range("K:AC").Copy Destination:=Worksheets("Resource FINAL").Range("K:AC")
+    
+    Worksheets("Resource").Delete       'delete the one with all the formulas
+    
+    
+End Sub
+
+
+Private Sub calculateTotals(start As Integer, endr As Integer)
+    Range("A" & endr) = "TOTAL"
+    
+    Range("D" & endr).Formula2 = "=SUM(D$" & start & ":D$" & endr - 1 & ")"
+    Range("D" & endr).AutoFill Destination:=Range("D" & endr & ":K" & endr), Type:=ylFillDefault
+    
+    Range("A" & endr & ":K" & endr).Font.Bold = True     'BOLD TOTALS
+    
+    Range("C8:K" & endr).Select
+    Selection.NumberFormat = "_(* #,##0.00_);_(* (#,##0.00);_(* ""-""??_);_(@_)"
+End Sub
+
+
+    
+Private Sub ACS_Setup_Part1(weekending As String)
+    Worksheets("ACS Staffing").Activate
+    
+    Range("A2") = "TEL (562) 376-9424"
+    Range("A3").Select
+    ActiveCell.FormulaR1C1 = "FAX (562) 299-5527"
+    Range("A4").Select
+    ActiveCell.FormulaR1C1 = "ATTN:LORENA"
+    Range("A5").Select
+    ActiveCell.FormulaR1C1 = "WEEK ENDING: " & weekending
+    Range("A6").Select
+    ActiveCell.FormulaR1C1 = "Tier 1-G Labor"
+    Range("A8").Select
+    ActiveCell.FormulaR1C1 = "UNIVERSAL WAREHOUSE CO."
+    Range("A9").Select
+    ActiveCell.FormulaR1C1 = "NAME"
+    Range("B9").Select
+    ActiveCell.FormulaR1C1 = "EMP#"
+    Range("C9").Select
+    ActiveCell.FormulaR1C1 = "RATE"
+    Range("D9").Select
+    ActiveCell.FormulaR1C1 = "ST HOURS"
+    Range("E9").Select
+    ActiveCell.FormulaR1C1 = "OT HOURS"
+    Range("F9").Select
+    ActiveCell.FormulaR1C1 = "DT HRS"
+    Range("G9").Select
+    ActiveCell.FormulaR1C1 = "VACATION"
+    Range("H9").Select
+    ActiveCell.FormulaR1C1 = "SICK"
+    Range("I9").Select
+    ActiveCell.FormulaR1C1 = "EXTRA PAY"
+    Range("J9").Select
+    ActiveCell.FormulaR1C1 = "TOTAL"
+    Range("K9").Select
+    Range("K8").Select
+    Range("L9").Value = "REMARKS"
+    Range("K8:K9").Select
+    With Selection
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlBottom
+        .WrapText = False
+        .Orientation = 0
+        .AddIndent = False
+        .IndentLevel = 0
+        .ShrinkToFit = False
+        .ReadingOrder = xlContext
+        .MergeCells = False
+    End With
+    Selection.Merge
+    Range("K8:K9").Select
+    ActiveCell.FormulaR1C1 = "TOTAL TO BILL"
+    Range("K8:K9").Select
+    With Selection
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlBottom
+        .WrapText = True
+        .Orientation = 0
+        .AddIndent = False
+        .IndentLevel = 0
+        .ShrinkToFit = False
+        .ReadingOrder = xlContext
+        .MergeCells = True
+    End With
+    Range("L17").Select
+End Sub
+
+
+Private Sub ACS_Setup_Part2()
+
+    Range("A10").Select
+    Range("B27").Select
+    Rows("2:9").Select
+    Selection.Copy
+    Rows("59:59").Select
+    ActiveSheet.Paste
+    Range("A63").Select
+    Application.CutCopyMode = False
+    ActiveCell.FormulaR1C1 = "Tier 1-G Clerical"
+    Range("A64").Select
+    Range("K58").Select
+    ActiveCell.FormulaR1C1 = "1.3"
+    Range("K1").Select
+    ActiveCell.FormulaR1C1 = "1.34"
+    Range("K2").Select
+    Range("A85").Select
+    Rows("85:85").Select
+    Selection.RowHeight = 36.75
+    Selection.RowHeight = 37.5
+    With Selection.Interior
+        .Pattern = xlSolid
+        .PatternColorIndex = xlAutomatic
+        .Color = 5296274
+        .TintAndShade = 0
+        .PatternTintAndShade = 0
+    End With
+    Range("K86").Select
+    ActiveCell.FormulaR1C1 = "1.3614"
+    Rows("87:87").Select
+    ActiveWindow.SmallScroll Down:=-45
+    Rows("59:66").Select
+    ActiveWindow.SmallScroll Down:=-69
+    Rows("2:9").Select
+    Selection.Copy
+    ActiveWindow.SmallScroll Down:=72
+    Range("A87").Select
+    ActiveSheet.Paste
+    Range("A91").Select
+    Application.CutCopyMode = False
+    ActiveCell.FormulaR1C1 = "Tier 2-G Labor"
+    Range("A92").Select
+    Rows("85:85").Select
+    Selection.Copy
+    ActiveWindow.SmallScroll Down:=21
+    Rows("122:122").Select
+    ActiveSheet.Paste
+    ActiveWindow.SmallScroll Down:=3
+    Range("B124").Select
+    ActiveWindow.SmallScroll Down:=-21
+    Rows("87:94").Select
+    Application.CutCopyMode = False
+    Selection.Copy
+    ActiveWindow.SmallScroll Down:=24
+    Range("A124").Select
+    ActiveSheet.Paste
+    Range("F132").Select
+    ActiveWindow.SmallScroll Down:=0
+    Range("A128").Select
+    Application.CutCopyMode = False
+    ActiveCell.FormulaR1C1 = "Tier 2-G Clerical"
+    Range("K123").Select
+    ActiveCell.FormulaR1C1 = "1.3214"
+    Range("K124").Select
+    ActiveWindow.SmallScroll Down:=-153
+
+' Add borders to final tables after names have been placed and rowcounts have been initialized
+'
+'
+    Range("A9:J9").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("K8:K9").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("L9").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+      
+    Range("A66:J66").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("K65:K66").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("L66").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    ActiveWindow.SmallScroll Down:=33
+    Range("A94:J94").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("K93:K94").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("L94").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    ActiveWindow.SmallScroll Down:=33
+    Range("A131:J131").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("K130:K131").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("L131").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    
+End Sub
+
+Private Sub JAM_setup(weekEnd As String)
+'
+' JAM_setup Macro
+'
+
+'
+    Worksheets("JAM Staffing").Activate
+        
+    'create headers
+    Sheets("JAM Staffing").Select
+    Range("A1").Select
+    ActiveCell.FormulaR1C1 = "J.A.M. Staffing Services, Inc."
+    Range("A2").Select
+    ActiveCell.FormulaR1C1 = "TEL: 562-803-1400"
+    Range("A3").Select
+    ActiveCell.FormulaR1C1 = "FAX: 562-803-1420"
+    Range("A4").Select
+    ActiveCell.FormulaR1C1 = "ATTN: Jennifer Cruz"
+    Range("A5").Select
+    ActiveCell.FormulaR1C1 = "WEEK ENDING: " & weekEnd
+    Range("A7").Select
+    ActiveCell.FormulaR1C1 = "UNIVERSAL WAREHOUSE CO."
+    Range("A8").Select
+    ActiveCell.FormulaR1C1 = "NAME"
+    Range("B8").Select
+    ActiveCell.FormulaR1C1 = "EMP #"
+    Range("C8").Select
+    ActiveCell.FormulaR1C1 = "RATE"
+    Range("D8").Select
+    ActiveCell.FormulaR1C1 = "ST HOURS"
+    Range("E8").Value = "OT HOURS"
+    Range("F8").Value = "DT HRS"
+    Range("G8").Value = "VACATION"
+    Range("H8").Value = "SICK"
+    Range("I8").Value = "EXTRA PAY"
+    Range("J8").Select
+    ActiveCell.FormulaR1C1 = "TOTAL HRS"
+    Range("K8").Select
+    ActiveCell.FormulaR1C1 = "TOTAL TO BILL"
+    Range("L8").Select
+    ActiveCell.FormulaR1C1 = "REMARKS"
+    Cells.Select
+    Cells.EntireColumn.AutoFit
+    Range("L1").Select
+    ActiveCell.FormulaR1C1 = "1.33"
+    Range("H2").Select
+    
+    Range("K7:K8").Select
+    With Selection
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlBottom
+        .WrapText = False
+        .Orientation = 0
+        .AddIndent = False
+        .IndentLevel = 0
+        .ShrinkToFit = False
+        .ReadingOrder = xlContext
+        .MergeCells = False
+    End With
+    Selection.Merge
+    columns("K:K").ColumnWidth = 10
+    With Selection
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlBottom
+        .WrapText = True
+        .Orientation = 0
+        .AddIndent = False
+        .IndentLevel = 0
+        .ShrinkToFit = False
+        .ReadingOrder = xlContext
+        .MergeCells = True
+    End With
+    
+    
+    'Add borders to headers
+        Range("A8:J8").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("K7:K8").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("L8").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    
+End Sub
+
+
+Private Sub Payroll_Sort()
+'
+' Payroll_Sort Macro
+' Renames current Sheet to Export File
+' Sort the initial file outputted by UKG by agency and then tier and then by name
+'
+
+    'Dynamic last row
+    Dim lastrow As Integer
+    
+    lastrow = Range("A1").End(xlDown).row
+    
+    ActiveSheet.Name = "Export File"
+    Range("A1:I" & lastrow).Select
+    Range("D7").Activate
+    Application.CutCopyMode = False
+    ActiveWorkbook.Worksheets("Export File").Sort.SortFields.Clear
+    ActiveWorkbook.Worksheets("Export File").Sort.SortFields.Add2 Key:=Range( _
+        "G2:G" & lastrow), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    With ActiveWorkbook.Worksheets("Export File").Sort
+        .SetRange Range("A1:I" & lastrow)
+        .Header = xlYes
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .SortMethod = xlPinYin
+        .Apply
+    End With
+    ActiveWorkbook.Worksheets("Export File").Sort.SortFields.Clear
+    ActiveWorkbook.Worksheets("Export File").Sort.SortFields.Add2 Key:=Range( _
+        "G2:G" & lastrow), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    ActiveWorkbook.Worksheets("Export File").Sort.SortFields.Add2 Key:=Range( _
+        "I2:I" & lastrow), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    With ActiveWorkbook.Worksheets("Export File").Sort
+        .SetRange Range("A1:I" & lastrow)
+        .Header = xlYes
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .SortMethod = xlPinYin
+        .Apply
+    End With
+     ActiveWorkbook.Worksheets("Export File").Sort.SortFields.Clear
+    ActiveWorkbook.Worksheets("Export File").Sort.SortFields.Add2 Key:=Range( _
+        "G2:G" & lastrow), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    ActiveWorkbook.Worksheets("Export File").Sort.SortFields.Add2 Key:=Range( _
+        "I2:I" & lastrow), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    ActiveWorkbook.Worksheets("Export File").Sort.SortFields.Add2 Key:=Range( _
+        "A2:A" & lastrow), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    With ActiveWorkbook.Worksheets("Export File").Sort
+        .SetRange Range("A1:I" & lastrow)
+        .Header = xlYes
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .SortMethod = xlPinYin
+        .Apply
+    End With
+    Range("I6").Select
+    
+    
+End Sub
+Private Sub PivotTable(lastRowFromExportFile As Integer)
+'
+' PivotTable Macro
+' Create simple pivot table
+'
+
+'
+    Application.CutCopyMode = False
+    Sheets.Add.Name = "Pivot"
+    ActiveWorkbook.PivotCaches.Create(SourceType:=xlDatabase, SourceData:= _
+        "Export File!R1C1:R" & lastRowFromExportFile & "C9", Version:=7).CreatePivotTable TableDestination:= _
+        "Pivot!R3C1", TableName:="PivotTable2", DefaultVersion:=7
+    Sheets("Pivot").Select
+    Cells(3, 1).Select
+    With ActiveSheet.PivotTables("PivotTable2")
+        .ColumnGrand = True
+        .HasAutoFormat = True
+        .DisplayErrorString = False
+        .DisplayNullString = True
+        .EnableDrilldown = True
+        .ErrorString = ""
+        .MergeLabels = False
+        .NullString = ""
+        .PageFieldOrder = 2
+        .PageFieldWrapCount = 0
+        .PreserveFormatting = True
+        .RowGrand = True
+        .SaveData = True
+        .PrintTitles = False
+        .RepeatItemsOnEachPrintedPage = True
+        .TotalsAnnotation = False
+        .CompactRowIndent = 1
+        .InGridDropZones = False
+        .DisplayFieldCaptions = True
+        .DisplayMemberPropertyTooltips = False
+        .DisplayContextTooltips = True
+        .ShowDrillIndicators = True
+        .PrintDrillIndicators = False
+        .AllowMultipleFilters = False
+        .SortUsingCustomLists = True
+        .FieldListSortAscending = False
+        .ShowValuesRow = False
+        .CalculatedMembersInFilters = False
+        .RowAxisLayout xlCompactRow
+    End With
+    With ActiveSheet.PivotTables("PivotTable2").PivotCache
+        .RefreshOnFileOpen = False
+        .MissingItemsLimit = xlMissingItemsDefault
+    End With
+    ActiveSheet.PivotTables("PivotTable2").RepeatAllLabels xlRepeatLabels
+    With ActiveSheet.PivotTables("PivotTable2").PivotFields("Employee Name")
+        .Orientation = xlRowField
+        .Position = 1
+    End With
+    With ActiveSheet.PivotTables("PivotTable2").PivotFields("Pay Code")
+        .Orientation = xlColumnField
+        .Position = 1
+    End With
+    ActiveSheet.PivotTables("PivotTable2").AddDataField ActiveSheet.PivotTables( _
+        "PivotTable2").PivotFields("Total Hours"), "Sum of Total Hours", xlSum
+End Sub
+Private Function totalOT_Pivot(lastPivotRow As Integer, lastPivotColumn As Integer, weekOTColumn As String, dailyOTcolumn As String) As String
+'
+' calcTotalOverTIme_Pivot Macro
+' returns the column number of the total overtime
+
+'
+    Dim totalOTcol As String
+    Dim lastPivotCol As String
+    
+    lastPivotCol = Split(Cells(1, lastPivotColumn).Address, "$")(1)
+    totalOTcol = Split(Cells(1, lastPivotColumn + 1).Address, "$")(1)       'total OT column letter
+    
+    Range(totalOTcol & "4").Value = "TOTAL OVERTIME"
+    Range(totalOTcol & "4").EntireColumn.AutoFit
+    Range(totalOTcol & "5").Formula2 = "=SUM(" & weekOTColumn & "5," & dailyOTcolumn & "5)"      'get the two overtime columns
+    Range(totalOTcol & "5").Select
+    Selection.AutoFill Destination:=Range(totalOTcol & "5:" & totalOTcol & lastPivotRow), Type:=xlFillDefault
+    Range(lastPivotCol & "4").Select
+    Selection.Copy
+    Range(totalOTcol & "4").Select
+    Selection.PasteSpecial Paste:=xlPasteFormats, Operation:=xlNone, _
+        SkipBlanks:=False, Transpose:=False
+    Application.CutCopyMode = False
+    
+    totalOT_Pivot = totalOTcol
+    
+    
+End Function
+
+Private Sub Add_PPT1_Borders(lastrow As Integer)
+
+' this procedure is only for Partners Personnel Tier 1
+
+ Range("A8:Q" & lastrow).Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Cells.Select
+    Cells.EntireColumn.AutoFit
+End Sub
+
+Private Sub Add_PPT3_Borders(lastrow As Integer)
+'this procedure is only for Partners Tier 3
+
+ Range("A8:R" & lastrow).Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Cells.Select
+    Cells.EntireColumn.AutoFit
+End Sub
+
+Private Sub Add_border_to_single_table(startRow As Integer, lastrow As Integer)
+'
+' Can be used for all agencies - just make sure to border any and all headers in the intial setup procedure
+'
+
+'
+    Range("A" & startRow & ":L" & lastrow).Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Cells.Select
+    Cells.EntireColumn.AutoFit
+End Sub
+
+
+
+Private Sub OneWay_Setup(weekending As String)
+'
+' OneWay_Setup Macro
+'
+
+    Range("A1").Value = "Oneway Staffing Agency"
+    Range("A1").Font.Bold = True
+    Range("A2").Value = "TEL:"
+    Range("A3").Value = "FAX:"
+    Range("A4").Value = "ATTN: Yanira/Alice"
+    Range("A5").Value = "WEEK ENDING: " & weekending
+    Range("A7").Value = "UNIVERSAL WAREHOUSE CO."
+    Range("A8").Value = "NAME"
+    Range("B8").Value = "EMP#"
+    Range("C8").Value = "RATE"
+    Range("D8").Value = "ST HOURS"
+    Range("E8").Value = "OT HOURS"
+    Range("F8").Value = "DT HOURS"
+    Range("G8").Value = "VACATION"
+    Range("H8").Value = "SICK"
+    Range("I8").Value = "EXTRA PAY"
+    Range("J8").Value = "TOTAL HRS"
+    Range("K8").Value = "TOTAL TO BILL"
+    Range("L8").Value = "REMARKS"
+    Range("L1").Value = 1.3
+    Range("B4").Select
+End Sub
+
+Private Sub oneway_headerBorders()
+'
+' oneway_headerBorders Macro
+'
+
+'
+    Range("A8:L8").Select
+    Range("L8").Activate
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("K7:K8").Select
+    With Selection
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlBottom
+        .WrapText = False
+        .Orientation = 0
+        .AddIndent = False
+        .IndentLevel = 0
+        .ShrinkToFit = False
+        .ReadingOrder = xlContext
+        .MergeCells = False
+    End With
+    Selection.Merge
+    Range("K7:K8").Select
+    With Selection
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlBottom
+        .WrapText = True
+        .Orientation = 0
+        .AddIndent = False
+        .IndentLevel = 0
+        .ShrinkToFit = False
+        .ReadingOrder = xlContext
+        .MergeCells = True
+    End With
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Cells.Select
+    Cells.EntireColumn.AutoFit
+End Sub
+
+
+Private Sub PartnersT1_Setup(weekending As String)
+'
+' Partners_Setup Macro
+'
+    
+    Range("A1").Value = "Partners-Nexem Agency"
+    Range("A2").Value = "Tel: 310-715-1487"
+    Range("A3").Value = "WEEK ENDING: " & weekending
+    Range("A5").Value = "UNIVERSAL WAREHOUSE CO."
+    Range("A4").Value = "Tier 1"
+    Range("A7").Value = "NAME"
+    Range("B7").Value = "Employee ID#"
+    Range("C7").Value = "Rate"
+    Range("D7").Value = "ST Hours"
+    Range("E7").Value = "OT Hours"
+    Range("F7").Value = "DT Hours"
+    Range("G7").Value = "Sick "
+    Range("H7").Value = "ST Hrs. Pay"
+    Range("I7").Value = "OT Hrs. Pay"
+    Range("J7").Value = "DT Hrs. Pay"
+    Range("K7").Value = "Sick Hrs. Pay"
+    Range("L7").Value = "Emp Total"
+    Range("M7").Value = "Reg Rate"
+    Range("N7").Value = "OT Rate"
+    Range("O7").Value = "DT Rate"
+    Range("P7").Value = "Sick   No Mark-up"
+    Range("Q7").Value = "UWC Total"
+    Range("R7").Value = "Remarks"
+    Range("A8").Select
+    
+'    Range("G34").Value = "Warehouse T1"
+'    Range("G35").Value = "Office T1"
+'    Range("G36").Value = "Office-C/S"
+'    Range("G37").Value = "Office-D"
+'
+'    Range("L34").Value = "6110"
+'    Range("L35").Value = "7090"
+'    Range("L36").Value = "6115"
+'    Range("L37").Value = "6120"
+    
+
+End Sub
+Private Sub PartnersT3_Supp(lastrow As Integer)
+'
+' Partners3_Supplemental Macro
+'
+' This adds the two columns right after employee name and deletes sick mark up column
+'
+
+'
+    Sheets("Partners Tier 3").Activate
+    columns("B:B").Select
+    Selection.Insert Shift:=xlToRight, CopyOrigin:=xlFormatFromLeftOrAbove
+    columns("B:B").Select
+    Selection.Insert Shift:=xlToRight, CopyOrigin:=xlFormatFromLeftOrAbove
+    Range("B7").Select
+    ActiveCell.FormulaR1C1 = "For ACA Billing Calculation"
+    Range("C7").Select
+    ActiveCell.FormulaR1C1 = "Individual ACA Charge"
+    Range("B7:C7").Select
+    Selection.Font.Bold = True
+    Range("D7:E7").Select
+    Range("E7").Activate
+    With Selection.Font
+        .ColorIndex = xlAutomatic
+        .TintAndShade = 0
+    End With
+    columns("R:R").Select
+    Selection.Delete Shift:=xlToLeft
+    Range("R8").Select
+    
+    Range("N7:N" & lastrow).Select
+    With Selection.Interior
+        .Pattern = xlSolid
+        .PatternColorIndex = xlAutomatic
+        .Color = 13421823
+        .TintAndShade = 0
+        .PatternTintAndShade = 0
+    End With
+    Range("R7:R" & lastrow).Select
+    With Selection.Interior
+        .Pattern = xlSolid
+        .PatternColorIndex = xlAutomatic
+        .ThemeColor = xlThemeColorAccent5
+        .TintAndShade = 0.799981688894314
+        .PatternTintAndShade = 0
+    End With
+    
+End Sub
+
+Private Sub Partners_setup_pt2()
+'
+' Partners_setup_pt2 Macro
+'
+
+'
+    Range("A3").Select
+    With Selection.Font
+        .Color = -4165632
+        .TintAndShade = 0
+    End With
+    With Selection.Font
+        .Color = -10477568
+        .TintAndShade = 0
+    End With
+    Range("A3").Select
+    With Selection.Font
+        .ThemeColor = xlThemeColorAccent1
+        .TintAndShade = -0.499984740745262
+    End With
+    With Selection.Font
+        .Color = -8713970
+        .TintAndShade = 0
+    End With
+    Range("B7:Q7").Select
+    With Selection.Font
+        .Color = -8713970
+        .TintAndShade = 0
+    End With
+    Selection.Font.Bold = True
+    Range("A7:Q7").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Selection.Borders(xlInsideVertical).LineStyle = xlNone
+    Selection.Borders(xlInsideHorizontal).LineStyle = xlNone
+    Range("A7:Q7").Select
+    Range("Q7").Activate
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("Q7").Select
+End Sub
+
+Private Sub Resource_Setup(weekending As String)
+'
+' Resource_Setup Macro
+'
+
+'
+    Sheets("Resource").Select
+    Range("A1").Value = "RESOURCE EMPLOYMENT SOLUTIONS"
+    Range("A2").Value = "TEL (321) 234-9363"
+    Range("A3").Value = "FAX"
+    Range("A4").Value = "ATTN: MARIELA/MARLYN"
+    Range("A5").Value = "WEEK ENDING: " & weekending
+    Range("A7").Value = "UNIVERSAL WAREHOUSE CO."
+    Range("A8").Value = "NAME"
+    Range("B8").Value = "EMP #"
+    Range("C8").Value = "RATE"
+    Range("D8").Value = "ST HRS"
+    Range("E8").Value = "OT HRS"
+    Range("F8").Value = "DT HRS"
+    Range("E8").Value = "OT HRS"
+    Range("D8").Value = "ST HRS"
+    Range("G8").Value = "VACATION"
+    Range("H8").Value = "SICK"
+    Range("I8").Value = "EXTRA PAY"
+    Range("J8").Value = "TOTAL HRS"
+    Range("K8").Value = "TOTAL TO BILL"
+    Range("K1").Value = 1.33
+    Range("L8").Value = "REMARKS"
+    Range("A8:J8").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("K7:K8").Select
+    With Selection
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlBottom
+        .WrapText = False
+        .Orientation = 0
+        .AddIndent = False
+        .IndentLevel = 0
+        .ShrinkToFit = False
+        .ReadingOrder = xlContext
+        .MergeCells = False
+    End With
+    Selection.Merge
+    With Selection
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlBottom
+        .WrapText = True
+        .Orientation = 0
+        .AddIndent = False
+        .IndentLevel = 0
+        .ShrinkToFit = False
+        .ReadingOrder = xlContext
+        .MergeCells = True
+    End With
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Range("L8").Select
+    Selection.Borders(xlDiagonalDown).LineStyle = xlNone
+    Selection.Borders(xlDiagonalUp).LineStyle = xlNone
+    With Selection.Borders(xlEdgeLeft)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeTop)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeBottom)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlEdgeRight)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideVertical)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    With Selection.Borders(xlInsideHorizontal)
+        .LineStyle = xlContinuous
+        .ColorIndex = 0
+        .TintAndShade = 0
+        .Weight = xlThin
+    End With
+    Cells.Select
+    Cells.EntireColumn.AutoFit
+    Range("D8").Select
+End Sub
+
